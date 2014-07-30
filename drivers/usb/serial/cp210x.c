@@ -35,6 +35,8 @@
  */
 static int cp210x_open(struct tty_struct *tty, struct usb_serial_port *);
 static void cp210x_close(struct usb_serial_port *);
+static int cp210x_ioctl(struct tty_struct *tty,
+	unsigned int cmd, unsigned long arg);
 static void cp210x_get_termios(struct tty_struct *,
 	struct usb_serial_port *port);
 static void cp210x_get_termios_port(struct usb_serial_port *port,
@@ -49,9 +51,10 @@ static int cp210x_tiocmset_port(struct usb_serial_port *port,
 		unsigned int, unsigned int);
 static void cp210x_break_ctl(struct tty_struct *, int);
 static int cp210x_startup(struct usb_serial *);
+static void cp210x_release(struct usb_serial *);
 static void cp210x_dtr_rts(struct usb_serial_port *p, int on);
 
-static int debug;
+static bool debug;
 
 static const struct usb_device_id id_table[] = {
 	{ USB_DEVICE(0x045B, 0x0053) }, /* Renesas RX610 RX-Stick */
@@ -59,6 +62,7 @@ static const struct usb_device_id id_table[] = {
 	{ USB_DEVICE(0x0489, 0xE000) }, /* Pirelli Broadband S.p.A, DP-L10 SIP/GSM Mobile */
 	{ USB_DEVICE(0x0489, 0xE003) }, /* Pirelli Broadband S.p.A, DP-L10 SIP/GSM Mobile */
 	{ USB_DEVICE(0x0745, 0x1000) }, /* CipherLab USB CCD Barcode Scanner 1000 */
+	{ USB_DEVICE(0x0846, 0x1100) }, /* NetGear Managed Switch M4100 series, M5300 series, M7100 series */
 	{ USB_DEVICE(0x08e6, 0x5501) }, /* Gemalto Prox-PU/CU contactless smartcard reader */
 	{ USB_DEVICE(0x08FD, 0x000A) }, /* Digianswer A/S , ZigBee/802.15.4 MAC Device */
 	{ USB_DEVICE(0x0BED, 0x1100) }, /* MEI (TM) Cashflow-SC Bill/Voucher Acceptor */
@@ -66,6 +70,7 @@ static const struct usb_device_id id_table[] = {
 	{ USB_DEVICE(0x0FCF, 0x1003) }, /* Dynastream ANT development board */
 	{ USB_DEVICE(0x0FCF, 0x1004) }, /* Dynastream ANT2USB */
 	{ USB_DEVICE(0x0FCF, 0x1006) }, /* Dynastream ANT development board */
+	{ USB_DEVICE(0x0FDE, 0xCA05) }, /* OWL Wireless Electricity Monitor CM-160 */
 	{ USB_DEVICE(0x10A6, 0xAA26) }, /* Knock-off DCU-11 cable */
 	{ USB_DEVICE(0x10AB, 0x10C5) }, /* Siemens MC60 Cable */
 	{ USB_DEVICE(0x10B5, 0xAC70) }, /* Nokia CA-42 USB */
@@ -81,6 +86,7 @@ static const struct usb_device_id id_table[] = {
 	{ USB_DEVICE(0x10C4, 0x8066) }, /* Argussoft In-System Programmer */
 	{ USB_DEVICE(0x10C4, 0x806F) }, /* IMS USB to RS422 Converter Cable */
 	{ USB_DEVICE(0x10C4, 0x807A) }, /* Crumb128 board */
+	{ USB_DEVICE(0x10C4, 0x80C4) }, /* Cygnal Integrated Products, Inc., Optris infrared thermometer */
 	{ USB_DEVICE(0x10C4, 0x80CA) }, /* Degree Controls Inc */
 	{ USB_DEVICE(0x10C4, 0x80DD) }, /* Tracient RFID */
 	{ USB_DEVICE(0x10C4, 0x80F6) }, /* Suunto sports instrument */
@@ -89,8 +95,10 @@ static const struct usb_device_id id_table[] = {
 	{ USB_DEVICE(0x10C4, 0x813F) }, /* Tams Master Easy Control */
 	{ USB_DEVICE(0x10C4, 0x814A) }, /* West Mountain Radio RIGblaster P&P */
 	{ USB_DEVICE(0x10C4, 0x814B) }, /* West Mountain Radio RIGtalk */
+	{ USB_DEVICE(0x2405, 0x0003) }, /* West Mountain Radio RIGblaster Advantage */
 	{ USB_DEVICE(0x10C4, 0x8156) }, /* B&G H3000 link cable */
 	{ USB_DEVICE(0x10C4, 0x815E) }, /* Helicomm IP-Link 1220-DVM */
+	{ USB_DEVICE(0x10C4, 0x815F) }, /* Timewave HamLinkUSB */
 	{ USB_DEVICE(0x10C4, 0x818B) }, /* AVIT Research USB to TTL */
 	{ USB_DEVICE(0x10C4, 0x819F) }, /* MJS USB Toslink Switcher */
 	{ USB_DEVICE(0x10C4, 0x81A6) }, /* ThinkOptics WavIt */
@@ -105,6 +113,7 @@ static const struct usb_device_id id_table[] = {
 	{ USB_DEVICE(0x10C4, 0x8218) }, /* Lipowsky Industrie Elektronik GmbH, HARP-1 */
 	{ USB_DEVICE(0x10C4, 0x822B) }, /* Modem EDGE(GSM) Comander 2 */
 	{ USB_DEVICE(0x10C4, 0x826B) }, /* Cygnal Integrated Products, Inc., Fasttrax GPS demonstration module */
+	{ USB_DEVICE(0x10C4, 0x8281) }, /* Nanotec Plug & Drive */
 	{ USB_DEVICE(0x10C4, 0x8293) }, /* Telegesis ETRX2USB */
 	{ USB_DEVICE(0x10C4, 0x82F9) }, /* Procyon AVS */
 	{ USB_DEVICE(0x10C4, 0x8341) }, /* Siemens MC35PU GPRS Modem */
@@ -117,10 +126,15 @@ static const struct usb_device_id id_table[] = {
 	{ USB_DEVICE(0x10C4, 0x8477) }, /* Balluff RFID */
 	{ USB_DEVICE(0x10C4, 0x85EA) }, /* AC-Services IBUS-IF */
 	{ USB_DEVICE(0x10C4, 0x85EB) }, /* AC-Services CIS-IBUS */
+	{ USB_DEVICE(0x10C4, 0x85F8) }, /* Virtenio Preon32 */
 	{ USB_DEVICE(0x10C4, 0x8664) }, /* AC-Services CAN-IF */
 	{ USB_DEVICE(0x10C4, 0x8665) }, /* AC-Services OBD-IF */
+	{ USB_DEVICE(0x10C4, 0x88A4) }, /* MMB Networks ZigBee USB Device */
+	{ USB_DEVICE(0x10C4, 0x88A5) }, /* Planet Innovation Ingeni ZigBee USB Device */
 	{ USB_DEVICE(0x10C4, 0xEA60) }, /* Silicon Labs factory default */
 	{ USB_DEVICE(0x10C4, 0xEA61) }, /* Silicon Labs factory default */
+	{ USB_DEVICE(0x10C4, 0xEA70) }, /* Silicon Labs factory default */
+	{ USB_DEVICE(0x10C4, 0xEA80) }, /* Silicon Labs factory default */
 	{ USB_DEVICE(0x10C4, 0xEA71) }, /* Infinity GPS-MIC-1 Radio Monophone */
 	{ USB_DEVICE(0x10C4, 0xF001) }, /* Elan Digital Systems USBscope50 */
 	{ USB_DEVICE(0x10C4, 0xF002) }, /* Elan Digital Systems USBwave12 */
@@ -130,7 +144,13 @@ static const struct usb_device_id id_table[] = {
 	{ USB_DEVICE(0x10CE, 0xEA6A) }, /* Silicon Labs MobiData GPRS USB Modem 100EU */
 	{ USB_DEVICE(0x13AD, 0x9999) }, /* Baltech card reader */
 	{ USB_DEVICE(0x1555, 0x0004) }, /* Owen AC4 USB-RS485 Converter */
+	{ USB_DEVICE(0x166A, 0x0201) }, /* Clipsal 5500PACA C-Bus Pascal Automation Controller */
+	{ USB_DEVICE(0x166A, 0x0301) }, /* Clipsal 5800PC C-Bus Wireless PC Interface */
 	{ USB_DEVICE(0x166A, 0x0303) }, /* Clipsal 5500PCU C-Bus USB interface */
+	{ USB_DEVICE(0x166A, 0x0304) }, /* Clipsal 5000CT2 C-Bus Black and White Touchscreen */
+	{ USB_DEVICE(0x166A, 0x0305) }, /* Clipsal C-5000CT2 C-Bus Spectrum Colour Touchscreen */
+	{ USB_DEVICE(0x166A, 0x0401) }, /* Clipsal L51xx C-Bus Architectural Dimmer */
+	{ USB_DEVICE(0x166A, 0x0101) }, /* Clipsal 5560884 C-Bus Multi-room Audio Matrix Switcher */
 	{ USB_DEVICE(0x16D6, 0x0001) }, /* Jablotron serial interface */
 	{ USB_DEVICE(0x16DC, 0x0010) }, /* W-IE-NE-R Plein & Baus GmbH PL512 Power Supply */
 	{ USB_DEVICE(0x16DC, 0x0011) }, /* W-IE-NE-R Plein & Baus GmbH RCM Remote Control for MARATON Power Supply */
@@ -141,13 +161,42 @@ static const struct usb_device_id id_table[] = {
 	{ USB_DEVICE(0x17F4, 0xAAAA) }, /* Wavesense Jazz blood glucose meter */
 	{ USB_DEVICE(0x1843, 0x0200) }, /* Vaisala USB Instrument Cable */
 	{ USB_DEVICE(0x18EF, 0xE00F) }, /* ELV USB-I2C-Interface */
+	{ USB_DEVICE(0x1ADB, 0x0001) }, /* Schweitzer Engineering C662 Cable */
 	{ USB_DEVICE(0x1BE3, 0x07A6) }, /* WAGO 750-923 USB Service Cable */
+	{ USB_DEVICE(0x1E29, 0x0102) }, /* Festo CPX-USB */
+	{ USB_DEVICE(0x1E29, 0x0501) }, /* Festo CMSP */
+	{ USB_DEVICE(0x1FB9, 0x0100) }, /* Lake Shore Model 121 Current Source */
+	{ USB_DEVICE(0x1FB9, 0x0200) }, /* Lake Shore Model 218A Temperature Monitor */
+	{ USB_DEVICE(0x1FB9, 0x0201) }, /* Lake Shore Model 219 Temperature Monitor */
+	{ USB_DEVICE(0x1FB9, 0x0202) }, /* Lake Shore Model 233 Temperature Transmitter */
+	{ USB_DEVICE(0x1FB9, 0x0203) }, /* Lake Shore Model 235 Temperature Transmitter */
+	{ USB_DEVICE(0x1FB9, 0x0300) }, /* Lake Shore Model 335 Temperature Controller */
+	{ USB_DEVICE(0x1FB9, 0x0301) }, /* Lake Shore Model 336 Temperature Controller */
+	{ USB_DEVICE(0x1FB9, 0x0302) }, /* Lake Shore Model 350 Temperature Controller */
+	{ USB_DEVICE(0x1FB9, 0x0303) }, /* Lake Shore Model 371 AC Bridge */
+	{ USB_DEVICE(0x1FB9, 0x0400) }, /* Lake Shore Model 411 Handheld Gaussmeter */
+	{ USB_DEVICE(0x1FB9, 0x0401) }, /* Lake Shore Model 425 Gaussmeter */
+	{ USB_DEVICE(0x1FB9, 0x0402) }, /* Lake Shore Model 455A Gaussmeter */
+	{ USB_DEVICE(0x1FB9, 0x0403) }, /* Lake Shore Model 475A Gaussmeter */
+	{ USB_DEVICE(0x1FB9, 0x0404) }, /* Lake Shore Model 465 Three Axis Gaussmeter */
+	{ USB_DEVICE(0x1FB9, 0x0600) }, /* Lake Shore Model 625A Superconducting MPS */
+	{ USB_DEVICE(0x1FB9, 0x0601) }, /* Lake Shore Model 642A Magnet Power Supply */
+	{ USB_DEVICE(0x1FB9, 0x0602) }, /* Lake Shore Model 648 Magnet Power Supply */
+	{ USB_DEVICE(0x1FB9, 0x0700) }, /* Lake Shore Model 737 VSM Controller */
+	{ USB_DEVICE(0x1FB9, 0x0701) }, /* Lake Shore Model 776 Hall Matrix */
 	{ USB_DEVICE(0x3195, 0xF190) }, /* Link Instruments MSO-19 */
+	{ USB_DEVICE(0x3195, 0xF280) }, /* Link Instruments MSO-28 */
+	{ USB_DEVICE(0x3195, 0xF281) }, /* Link Instruments MSO-28 */
 	{ USB_DEVICE(0x413C, 0x9500) }, /* DW700 GPS USB interface */
 	{ } /* Terminating Entry */
 };
 
 MODULE_DEVICE_TABLE(usb, id_table);
+
+struct cp210x_port_private {
+	__u8                    bInterfaceNumber;
+	__u8			bPartNumber;
+};
 
 static struct usb_driver cp210x_driver = {
 	.name		= "cp210x",
@@ -169,17 +218,33 @@ static struct usb_serial_driver cp210x_device = {
 	.bulk_out_size		= 256,
 	.open			= cp210x_open,
 	.close			= cp210x_close,
+	.ioctl			= cp210x_ioctl,
 	.break_ctl		= cp210x_break_ctl,
 	.set_termios		= cp210x_set_termios,
 	.tiocmget 		= cp210x_tiocmget,
 	.tiocmset		= cp210x_tiocmset,
 	.attach			= cp210x_startup,
+	.release                = cp210x_release,
 	.dtr_rts		= cp210x_dtr_rts
 };
 
+/* Part number definitions */
+#define CP2101_PARTNUM		0x01
+#define CP2102_PARTNUM		0x02
+#define CP2103_PARTNUM		0x03
+#define CP2104_PARTNUM		0x04
+#define CP2105_PARTNUM		0x05
+#define CP2108_PARTNUM		0x08
+
+/* IOCTLs */
+#define IOCTL_GPIOGET		0x8000
+#define IOCTL_GPIOSET		0x8001
+
 /* Config request types */
-#define REQTYPE_HOST_TO_DEVICE	0x41
-#define REQTYPE_DEVICE_TO_HOST	0xc1
+#define REQTYPE_HOST_TO_INTERFACE	0x41
+#define REQTYPE_INTERFACE_TO_HOST	0xc1
+#define REQTYPE_HOST_TO_DEVICE	0x40
+#define REQTYPE_DEVICE_TO_HOST	0xc0
 
 /* Config request codes */
 #define CP210X_IFC_ENABLE	0x00
@@ -208,10 +273,16 @@ static struct usb_serial_driver cp210x_device = {
 #define CP210X_SET_CHARS	0x19
 #define CP210X_GET_BAUDRATE	0x1D
 #define CP210X_SET_BAUDRATE	0x1E
+#define CP210X_VENDOR_SPECIFIC	0xFF
 
 /* CP210X_IFC_ENABLE */
 #define UART_ENABLE		0x0001
 #define UART_DISABLE		0x0000
+
+/* CP210X_VENDOR_SPECIFIC */
+#define CP210X_WRITE_LATCH	0x37E1
+#define CP210X_READ_LATCH	0x00C2
+#define CP210X_GET_PARTNUM	0x370B
 
 /* CP210X_(SET|GET)_BAUDDIV */
 #define BAUD_RATE_GEN_FREQ	0x384000
@@ -257,10 +328,11 @@ static struct usb_serial_driver cp210x_device = {
  * 'data' is a pointer to a pre-allocated array of integers large
  * enough to hold 'size' bytes (with 4 bytes to each integer)
  */
-static int cp210x_get_config(struct usb_serial_port *port, u8 request,
-		unsigned int *data, int size)
+static int cp210x_get_config(struct usb_serial_port *port, u8 requestType,
+		u8 request, int value, unsigned int *data, int size)
 {
 	struct usb_serial *serial = port->serial;
+	struct cp210x_port_private *port_priv = usb_get_serial_port_data(port);
 	__le32 *buf;
 	int result, i, length;
 
@@ -275,8 +347,8 @@ static int cp210x_get_config(struct usb_serial_port *port, u8 request,
 
 	/* Issue the request, attempting to read 'size' bytes */
 	result = usb_control_msg(serial->dev, usb_rcvctrlpipe(serial->dev, 0),
-				request, REQTYPE_DEVICE_TO_HOST, 0x0000,
-				0, buf, size, 300);
+				request, requestType, value,
+				port_priv->bInterfaceNumber, buf, size, 300);
 
 	/* Convert data into an array of integers */
 	for (i = 0; i < length; i++)
@@ -288,7 +360,10 @@ static int cp210x_get_config(struct usb_serial_port *port, u8 request,
 		dbg("%s - Unable to send config request, "
 				"request=0x%x size=%d result=%d\n",
 				__func__, request, size, result);
-		return -EPROTO;
+		if (result > 0)
+			result = -EPROTO;
+
+		return result;
 	}
 
 	return 0;
@@ -300,60 +375,50 @@ static int cp210x_get_config(struct usb_serial_port *port, u8 request,
  * Values less than 16 bits wide are sent directly
  * 'size' is specified in bytes.
  */
-static int cp210x_set_config(struct usb_serial_port *port, u8 request,
-		unsigned int *data, int size)
+static int cp210x_set_config(struct usb_serial_port *port, u8 requestType,
+		u8 request, int value, unsigned int *data, int size)
 {
 	struct usb_serial *serial = port->serial;
-	__le32 *buf;
-	int result, i, length;
+	struct cp210x_port_private *port_priv = usb_get_serial_port_data(port);
+	__le32 *buf = NULL;
+	int result, i, length = 0;
 
-	/* Number of integers required to contain the array */
-	length = (((size - 1) | 3) + 1)/4;
+	if (size)
+	{
+		/* Number of integers required to contain the array */
+		length = (((size - 1) | 3) + 1)/4;
 
-	buf = kmalloc(length * sizeof(__le32), GFP_KERNEL);
-	if (!buf) {
-		dev_err(&port->dev, "%s - out of memory.\n",
-				__func__);
-		return -ENOMEM;
+		buf = kmalloc(length * sizeof(__le32), GFP_KERNEL);
+		if (!buf) {
+			dev_err(&port->dev, "%s - out of memory.\n",
+					__func__);
+			return -ENOMEM;
+		}
+
+		/* Array of integers into bytes */
+		for (i = 0; i < length; i++)
+			buf[i] = cpu_to_le32(data[i]);
 	}
 
-	/* Array of integers into bytes */
-	for (i = 0; i < length; i++)
-		buf[i] = cpu_to_le32(data[i]);
+	result = usb_control_msg(serial->dev,
+			usb_sndctrlpipe(serial->dev, 0),
+			request, requestType, value,
+			port_priv->bInterfaceNumber, buf, size, 300);
 
-	if (size > 2) {
-		result = usb_control_msg(serial->dev,
-				usb_sndctrlpipe(serial->dev, 0),
-				request, REQTYPE_HOST_TO_DEVICE, 0x0000,
-				0, buf, size, 300);
-	} else {
-		result = usb_control_msg(serial->dev,
-				usb_sndctrlpipe(serial->dev, 0),
-				request, REQTYPE_HOST_TO_DEVICE, data[0],
-				0, NULL, 0, 300);
-	}
+	if (buf)
+		kfree(buf);
 
-	kfree(buf);
-
-	if ((size > 2 && result != size) || result < 0) {
+	if (result != size) {
 		dbg("%s - Unable to send request, "
 				"request=0x%x size=%d result=%d\n",
 				__func__, request, size, result);
-		return -EPROTO;
+		if (result > 0)
+			result = -EPROTO;
+
+		return result;
 	}
 
 	return 0;
-}
-
-/*
- * cp210x_set_config_single
- * Convenience function for calling cp210x_set_config on single data values
- * without requiring an integer pointer
- */
-static inline int cp210x_set_config_single(struct usb_serial_port *port,
-		u8 request, unsigned int data)
-{
-	return cp210x_set_config(port, request, &data, 2);
 }
 
 /*
@@ -399,12 +464,15 @@ static unsigned int cp210x_quantise_baudrate(unsigned int baud) {
 
 static int cp210x_open(struct tty_struct *tty, struct usb_serial_port *port)
 {
+	int result;
+
 	dbg("%s - port %d", __func__, port->number);
 
-	if (cp210x_set_config_single(port, CP210X_IFC_ENABLE, UART_ENABLE)) {
-		dev_err(&port->dev, "%s - Unable to enable UART\n",
-				__func__);
-		return -EPROTO;
+	result = cp210x_set_config(port, REQTYPE_HOST_TO_INTERFACE,
+				CP210X_IFC_ENABLE, UART_ENABLE, NULL, 0);
+	if (result) {
+		dev_err(&port->dev, "%s - Unable to enable UART\n", __func__);
+		return result;
 	}
 
 	/* Configure the termios structure */
@@ -425,8 +493,68 @@ static void cp210x_close(struct usb_serial_port *port)
 
 	mutex_lock(&port->serial->disc_mutex);
 	if (!port->serial->disconnected)
-		cp210x_set_config_single(port, CP210X_IFC_ENABLE, UART_DISABLE);
+		cp210x_set_config(port, REQTYPE_HOST_TO_INTERFACE,
+				CP210X_IFC_ENABLE, UART_DISABLE, NULL, 0);
 	mutex_unlock(&port->serial->disc_mutex);
+}
+
+static int cp210x_ioctl(struct tty_struct *tty,
+	unsigned int cmd, unsigned long arg)
+{
+	struct usb_serial_port *port = tty->driver_data;
+	struct cp210x_port_private *port_priv = usb_get_serial_port_data(port);
+
+	switch (cmd) {
+
+	case IOCTL_GPIOGET:
+		if ((port_priv->bPartNumber == CP2103_PARTNUM) ||
+			(port_priv->bPartNumber == CP2104_PARTNUM)) {
+			cp210x_get_config(port, REQTYPE_DEVICE_TO_HOST,
+					CP210X_VENDOR_SPECIFIC,
+					CP210X_READ_LATCH,
+					(unsigned int*)arg, 1);
+		}
+		else if (port_priv->bPartNumber == CP2105_PARTNUM) {
+			cp210x_get_config(port, REQTYPE_INTERFACE_TO_HOST,
+					CP210X_VENDOR_SPECIFIC,
+					CP210X_READ_LATCH,
+					(unsigned int*)arg, 1);
+		}
+		else {
+			return -ENOTSUPP;
+		}
+		break;
+
+	case IOCTL_GPIOSET:
+		if ((port_priv->bPartNumber == CP2103_PARTNUM) ||
+			(port_priv->bPartNumber == CP2104_PARTNUM)) {
+			/*cp210x_set_config(port, REQTYPE_HOST_TO_DEVICE,
+					CP210x_VENDOR_SPECIFIC,
+					CP210x_GPIO_WRITE_LATCH, &val, 2);*/
+			usb_control_msg(port->serial->dev,
+					usb_sndctrlpipe(port->serial->dev, 0),
+					CP210X_VENDOR_SPECIFIC,
+					REQTYPE_HOST_TO_DEVICE,
+					CP210X_WRITE_LATCH,
+					*(unsigned long*)arg,
+					NULL, 0, 300);
+		}
+		else if (port_priv->bPartNumber == CP2105_PARTNUM) {
+			cp210x_set_config(port, REQTYPE_HOST_TO_INTERFACE,
+					CP210X_VENDOR_SPECIFIC,
+					CP210X_WRITE_LATCH,
+					(unsigned int*)arg, 2);
+		}
+		else {
+			return -ENOTSUPP;
+		}
+		break;
+
+	default:
+		break;
+	}
+
+	return -ENOIOCTLCMD;
 }
 
 /*
@@ -466,14 +594,16 @@ static void cp210x_get_termios_port(struct usb_serial_port *port,
 
 	dbg("%s - port %d", __func__, port->number);
 
-	cp210x_get_config(port, CP210X_GET_BAUDRATE, &baud, 4);
+	cp210x_get_config(port, REQTYPE_INTERFACE_TO_HOST,
+			CP210X_GET_BAUDRATE, 0, &baud, 4);
 
 	dbg("%s - baud rate = %d", __func__, baud);
 	*baudp = baud;
 
 	cflag = *cflagp;
 
-	cp210x_get_config(port, CP210X_GET_LINE_CTL, &bits, 2);
+	cp210x_get_config(port, REQTYPE_INTERFACE_TO_HOST,
+			CP210X_GET_LINE_CTL, 0, &bits, 2);
 	cflag &= ~CSIZE;
 	switch (bits & BITS_DATA_MASK) {
 	case BITS_DATA_5:
@@ -498,14 +628,16 @@ static void cp210x_get_termios_port(struct usb_serial_port *port,
 		cflag |= CS8;
 		bits &= ~BITS_DATA_MASK;
 		bits |= BITS_DATA_8;
-		cp210x_set_config(port, CP210X_SET_LINE_CTL, &bits, 2);
+		cp210x_set_config(port, REQTYPE_HOST_TO_INTERFACE,
+				CP210X_SET_LINE_CTL, 0, &bits, 2);
 		break;
 	default:
 		dbg("%s - Unknown number of data bits, using 8", __func__);
 		cflag |= CS8;
 		bits &= ~BITS_DATA_MASK;
 		bits |= BITS_DATA_8;
-		cp210x_set_config(port, CP210X_SET_LINE_CTL, &bits, 2);
+		cp210x_set_config(port, REQTYPE_HOST_TO_INTERFACE,
+				CP210X_SET_LINE_CTL, 0, &bits, 2);
 		break;
 	}
 
@@ -524,24 +656,20 @@ static void cp210x_get_termios_port(struct usb_serial_port *port,
 		cflag |= PARENB;
 		break;
 	case BITS_PARITY_MARK:
-		dbg("%s - parity = MARK (not supported, disabling parity)",
-				__func__);
-		cflag &= ~PARENB;
-		bits &= ~BITS_PARITY_MASK;
-		cp210x_set_config(port, CP210X_SET_LINE_CTL, &bits, 2);
+		dbg("%s - parity = MARK", __func__);
+		cflag |= (PARENB|PARODD|CMSPAR);
 		break;
 	case BITS_PARITY_SPACE:
-		dbg("%s - parity = SPACE (not supported, disabling parity)",
-				__func__);
-		cflag &= ~PARENB;
-		bits &= ~BITS_PARITY_MASK;
-		cp210x_set_config(port, CP210X_SET_LINE_CTL, &bits, 2);
+		dbg("%s - parity = SPACE", __func__);
+		cflag &= ~PARODD;
+		cflag |= (PARENB|CMSPAR);
 		break;
 	default:
 		dbg("%s - Unknown parity mode, disabling parity", __func__);
 		cflag &= ~PARENB;
 		bits &= ~BITS_PARITY_MASK;
-		cp210x_set_config(port, CP210X_SET_LINE_CTL, &bits, 2);
+		cp210x_set_config(port, REQTYPE_HOST_TO_INTERFACE,
+				CP210X_SET_LINE_CTL, 0, &bits, 2);
 		break;
 	}
 
@@ -554,7 +682,8 @@ static void cp210x_get_termios_port(struct usb_serial_port *port,
 		dbg("%s - stop bits = 1.5 (not supported, using 1 stop bit)",
 								__func__);
 		bits &= ~BITS_STOP_MASK;
-		cp210x_set_config(port, CP210X_SET_LINE_CTL, &bits, 2);
+		cp210x_set_config(port, REQTYPE_HOST_TO_INTERFACE,
+				CP210X_SET_LINE_CTL, 0, &bits, 2);
 		break;
 	case BITS_STOP_2:
 		dbg("%s - stop bits = 2", __func__);
@@ -564,11 +693,13 @@ static void cp210x_get_termios_port(struct usb_serial_port *port,
 		dbg("%s - Unknown number of stop bits, using 1 stop bit",
 								__func__);
 		bits &= ~BITS_STOP_MASK;
-		cp210x_set_config(port, CP210X_SET_LINE_CTL, &bits, 2);
+		cp210x_set_config(port, REQTYPE_HOST_TO_INTERFACE,
+				CP210X_SET_LINE_CTL, 0, &bits, 2);
 		break;
 	}
 
-	cp210x_get_config(port, CP210X_GET_FLOW, modem_ctl, 16);
+	cp210x_get_config(port, REQTYPE_INTERFACE_TO_HOST,
+			CP210X_GET_FLOW, 0, modem_ctl, 16);
 	if (modem_ctl[0] & 0x0008) {
 		dbg("%s - flow control = CRTSCTS", __func__);
 		cflag |= CRTSCTS;
@@ -621,8 +752,8 @@ static void cp210x_change_speed(struct tty_struct *tty,
 	baud = cp210x_quantise_baudrate(baud);
 
 	dbg("%s - setting baud rate to %u", __func__, baud);
-	if (cp210x_set_config(port, CP210X_SET_BAUDRATE, &baud,
-							sizeof(baud))) {
+	if (cp210x_set_config(port, REQTYPE_HOST_TO_INTERFACE,
+			CP210X_SET_BAUDRATE, 0, &baud, sizeof(baud))) {
 		dev_warn(&port->dev, "failed to set baud rate to %u\n", baud);
 		if (old_termios)
 			baud = old_termios->c_ospeed;
@@ -645,16 +776,15 @@ static void cp210x_set_termios(struct tty_struct *tty,
 	if (!tty)
 		return;
 
-	tty->termios->c_cflag &= ~CMSPAR;
 	cflag = tty->termios->c_cflag;
 	old_cflag = old_termios->c_cflag;
 
-	if (tty->termios->c_ospeed != old_termios->c_ospeed)
-		cp210x_change_speed(tty, port, old_termios);
+	cp210x_change_speed(tty, port, old_termios);
 
 	/* If the number of data bits is to be updated */
 	if ((cflag & CSIZE) != (old_cflag & CSIZE)) {
-		cp210x_get_config(port, CP210X_GET_LINE_CTL, &bits, 2);
+		cp210x_get_config(port, REQTYPE_INTERFACE_TO_HOST,
+				CP210X_GET_LINE_CTL, 0, &bits, 2);
 		bits &= ~BITS_DATA_MASK;
 		switch (cflag & CSIZE) {
 		case CS5:
@@ -684,30 +814,45 @@ static void cp210x_set_termios(struct tty_struct *tty,
 				bits |= BITS_DATA_8;
 				break;
 		}
-		if (cp210x_set_config(port, CP210X_SET_LINE_CTL, &bits, 2))
+		if (cp210x_set_config(port, REQTYPE_HOST_TO_INTERFACE,
+				CP210X_SET_LINE_CTL, 0, &bits, 2))
 			dbg("Number of data bits requested "
 					"not supported by device\n");
 	}
 
-	if ((cflag & (PARENB|PARODD)) != (old_cflag & (PARENB|PARODD))) {
-		cp210x_get_config(port, CP210X_GET_LINE_CTL, &bits, 2);
+	if ((cflag     & (PARENB|PARODD|CMSPAR)) !=
+	    (old_cflag & (PARENB|PARODD|CMSPAR))) {
+		cp210x_get_config(port, REQTYPE_INTERFACE_TO_HOST,
+				CP210X_GET_LINE_CTL, 0, &bits, 2);
 		bits &= ~BITS_PARITY_MASK;
 		if (cflag & PARENB) {
-			if (cflag & PARODD) {
-				bits |= BITS_PARITY_ODD;
-				dbg("%s - parity = ODD", __func__);
+			if (cflag & CMSPAR) {
+			    if (cflag & PARODD) {
+				    bits |= BITS_PARITY_MARK;
+				    dbg("%s - parity = MARK", __func__);
+			    } else {
+				    bits |= BITS_PARITY_SPACE;
+				    dbg("%s - parity = SPACE", __func__);
+			    }
 			} else {
-				bits |= BITS_PARITY_EVEN;
-				dbg("%s - parity = EVEN", __func__);
+			    if (cflag & PARODD) {
+				    bits |= BITS_PARITY_ODD;
+				    dbg("%s - parity = ODD", __func__);
+			    } else {
+				    bits |= BITS_PARITY_EVEN;
+				    dbg("%s - parity = EVEN", __func__);
+			    }
 			}
 		}
-		if (cp210x_set_config(port, CP210X_SET_LINE_CTL, &bits, 2))
+		if (cp210x_set_config(port, REQTYPE_HOST_TO_INTERFACE,
+				CP210X_SET_LINE_CTL, 0, &bits, 2))
 			dbg("Parity mode not supported "
 					"by device\n");
 	}
 
 	if ((cflag & CSTOPB) != (old_cflag & CSTOPB)) {
-		cp210x_get_config(port, CP210X_GET_LINE_CTL, &bits, 2);
+		cp210x_get_config(port, REQTYPE_INTERFACE_TO_HOST,
+				CP210X_GET_LINE_CTL, 0, &bits, 2);
 		bits &= ~BITS_STOP_MASK;
 		if (cflag & CSTOPB) {
 			bits |= BITS_STOP_2;
@@ -716,13 +861,15 @@ static void cp210x_set_termios(struct tty_struct *tty,
 			bits |= BITS_STOP_1;
 			dbg("%s - stop bits = 1", __func__);
 		}
-		if (cp210x_set_config(port, CP210X_SET_LINE_CTL, &bits, 2))
+		if (cp210x_set_config(port, REQTYPE_HOST_TO_INTERFACE,
+				CP210X_SET_LINE_CTL, 0, &bits, 2))
 			dbg("Number of stop bits requested "
 					"not supported by device\n");
 	}
 
 	if ((cflag & CRTSCTS) != (old_cflag & CRTSCTS)) {
-		cp210x_get_config(port, CP210X_GET_FLOW, modem_ctl, 16);
+		cp210x_get_config(port, REQTYPE_INTERFACE_TO_HOST,
+				CP210X_GET_FLOW, 0, modem_ctl, 16);
 		dbg("%s - read modem controls = 0x%.4x 0x%.4x 0x%.4x 0x%.4x",
 				__func__, modem_ctl[0], modem_ctl[1],
 				modem_ctl[2], modem_ctl[3]);
@@ -742,7 +889,8 @@ static void cp210x_set_termios(struct tty_struct *tty,
 		dbg("%s - write modem controls = 0x%.4x 0x%.4x 0x%.4x 0x%.4x",
 				__func__, modem_ctl[0], modem_ctl[1],
 				modem_ctl[2], modem_ctl[3]);
-		cp210x_set_config(port, CP210X_SET_FLOW, modem_ctl, 16);
+		cp210x_set_config(port, REQTYPE_HOST_TO_INTERFACE,
+				CP210X_SET_FLOW, 0, modem_ctl, 16);
 	}
 
 }
@@ -780,7 +928,8 @@ static int cp210x_tiocmset_port(struct usb_serial_port *port,
 
 	dbg("%s - control = 0x%.4x", __func__, control);
 
-	return cp210x_set_config(port, CP210X_SET_MHS, &control, 2);
+	return cp210x_set_config(port, REQTYPE_HOST_TO_INTERFACE,
+				CP210X_SET_MHS, control, NULL, 0);
 }
 
 static void cp210x_dtr_rts(struct usb_serial_port *p, int on)
@@ -799,7 +948,8 @@ static int cp210x_tiocmget (struct tty_struct *tty)
 
 	dbg("%s - port %d", __func__, port->number);
 
-	cp210x_get_config(port, CP210X_GET_MDMSTS, &control, 1);
+	cp210x_get_config(port, REQTYPE_INTERFACE_TO_HOST,
+			CP210X_GET_MDMSTS, 0, &control, 1);
 
 	result = ((control & CONTROL_DTR) ? TIOCM_DTR : 0)
 		|((control & CONTROL_RTS) ? TIOCM_RTS : 0)
@@ -825,14 +975,50 @@ static void cp210x_break_ctl (struct tty_struct *tty, int break_state)
 		state = BREAK_ON;
 	dbg("%s - turning break %s", __func__,
 			state == BREAK_OFF ? "off" : "on");
-	cp210x_set_config(port, CP210X_SET_BREAK, &state, 2);
+	cp210x_set_config(port, REQTYPE_HOST_TO_INTERFACE,
+			CP210X_SET_BREAK, 0, &state, 2);
 }
 
 static int cp210x_startup(struct usb_serial *serial)
 {
+	struct cp210x_port_private *port_priv;
+	int i;
+	unsigned int partNum;
+
 	/* cp210x buffers behave strangely unless device is reset */
 	usb_reset_device(serial->dev);
+
+	for (i = 0; i < serial->num_ports; i++) {
+		port_priv = kzalloc(sizeof(*port_priv), GFP_KERNEL);
+		if (!port_priv)
+			return -ENOMEM;
+
+		memset(port_priv, 0x00, sizeof(*port_priv));
+		port_priv->bInterfaceNumber =
+			serial->interface->cur_altsetting->desc.bInterfaceNumber;
+
+		usb_set_serial_port_data(serial->port[i], port_priv);
+
+		/* Get the 1-byte part number of the cp210x device */
+		cp210x_get_config(serial->port[i],
+			REQTYPE_DEVICE_TO_HOST, CP210X_VENDOR_SPECIFIC,
+			CP210X_GET_PARTNUM, &partNum, 1);
+		port_priv->bPartNumber = partNum & 0xFF;
+	}
+
 	return 0;
+}
+
+static void cp210x_release(struct usb_serial *serial)
+{
+	struct cp210x_port_private *port_priv;
+	int i;
+
+	for (i = 0; i < serial->num_ports; i++) {
+		port_priv = usb_get_serial_port_data(serial->port[i]);
+		kfree(port_priv);
+		usb_set_serial_port_data(serial->port[i], NULL);
+	}
 }
 
 static int __init cp210x_init(void)
