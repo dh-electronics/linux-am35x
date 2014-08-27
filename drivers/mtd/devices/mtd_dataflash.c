@@ -951,7 +951,8 @@ static int __init dataflash_init(void)
 {
 	return spi_register_driver(&dataflash_driver);
 }
-module_init(dataflash_init);
+/* module_init(dataflash_init); */
+late_initcall(dataflash_init);
 
 static void __exit dataflash_exit(void)
 {
