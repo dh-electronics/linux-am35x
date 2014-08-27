@@ -52,8 +52,11 @@ static int _init_omap_device(char *name)
 static void omap2_init_processor_devices(void)
 {
 	_init_omap_device("mpu");
-	if (omap3_has_iva())
-		_init_omap_device("iva");
+
+	if(!cpu_is_omap3517()) {
+		if (omap3_has_iva())
+			_init_omap_device("iva");
+	}
 
 	if (cpu_is_omap44xx()) {
 		_init_omap_device("l3_main_1");
