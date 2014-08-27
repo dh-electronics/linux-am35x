@@ -22,6 +22,8 @@
 
 #define DSS_SUBSYS_NAME "DPI"
 
+#define DEBUG
+
 #include <linux/kernel.h>
 #include <linux/delay.h>
 #include <linux/export.h>
@@ -180,7 +182,7 @@ int omapdss_dpi_display_enable(struct omap_dss_device *dssdev)
 {
 	int r;
 
-	if (cpu_is_omap34xx() && !dpi.vdds_dsi_reg) {
+	if ((cpu_is_omap34xx() && !cpu_is_omap3505() && !cpu_is_omap3517()) && !dpi.vdds_dsi_reg) {
 		DSSERR("no VDSS_DSI regulator\n");
 		return -ENODEV;
 	}
@@ -196,7 +198,7 @@ int omapdss_dpi_display_enable(struct omap_dss_device *dssdev)
 		goto err_start_dev;
 	}
 
-	if (cpu_is_omap34xx()) {
+	if (cpu_is_omap34xx() && !cpu_is_omap3505() && !cpu_is_omap3517()) {
 		r = regulator_enable(dpi.vdds_dsi_reg);
 		if (r)
 			goto err_reg_enable;
@@ -243,7 +245,7 @@ err_get_dsi:
 err_get_dispc:
 	dss_runtime_put();
 err_get_dss:
-	if (cpu_is_omap34xx())
+	if (cpu_is_omap34xx() && !cpu_is_omap3505() && !cpu_is_omap3517())
 		regulator_disable(dpi.vdds_dsi_reg);
 err_reg_enable:
 	omap_dss_stop_device(dssdev);
@@ -265,7 +267,7 @@ void omapdss_dpi_display_disable(struct omap_dss_device *dssdev)
 	dispc_runtime_put();
 	dss_runtime_put();
 
-	if (cpu_is_omap34xx())
+	if (cpu_is_omap34xx() && !cpu_is_omap3505() && !cpu_is_omap3517())
 		regulator_disable(dpi.vdds_dsi_reg);
 
 	omap_dss_stop_device(dssdev);
@@ -353,7 +355,8 @@ int dpi_init_display(struct omap_dss_device *dssdev)
 {
 	DSSDBG("init_display\n");
 
-	if (cpu_is_omap34xx() && dpi.vdds_dsi_reg == NULL) {
+	if (cpu_is_omap34xx() && (dpi.vdds_dsi_reg == NULL) &&
+			!cpu_is_omap3505() && !cpu_is_omap3517()) {
 		struct regulator *vdds_dsi;
 
 		vdds_dsi = dss_get_vdds_dsi();
