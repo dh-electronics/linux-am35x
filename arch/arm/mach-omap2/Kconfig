@@ -198,6 +198,12 @@ config MACH_OMAP3517EVM
 	default y
 	select OMAP_PACKAGE_CBB
 
+config MACH_DHCM3517
+	bool "DH-electronics DHCM3517 DHeva01"
+	depends on ARCH_OMAP3
+	default y
+	select OMAP_PACKAGE_ZCN
+
 config MACH_CRANEBOARD
 	bool "AM3517/05 CRANE board"
 	depends on ARCH_OMAP3
