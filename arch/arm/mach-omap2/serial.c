@@ -770,6 +770,18 @@ void __init omap_serial_init_port(struct omap_board_data *bdata)
 	omap_up.irqflags = IRQF_SHARED;
 	omap_up.flags = UPF_BOOT_AUTOCONF | UPF_SHARE_IRQ;
 
+	if (uart->num == 0) {
+		omap_up.dtr_gpio = 136;
+		omap_up.dcd_gpio = 138;
+		omap_up.dsr_gpio = 137;
+		omap_up.ri_gpio  = 139;
+	} else {
+		omap_up.dtr_gpio = 0;
+		omap_up.dcd_gpio = 0;
+		omap_up.dsr_gpio = 0;
+		omap_up.ri_gpio  = 0;
+	}
+
 	pdata = &omap_up;
 	pdata_size = sizeof(struct omap_uart_port_info);
 #endif

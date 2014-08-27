@@ -37,6 +37,7 @@
 #include <linux/clk.h>
 #include <linux/serial_core.h>
 #include <linux/irq.h>
+#include <linux/gpio.h>
 
 #include <plat/dma.h>
 #include <plat/dmtimer.h>
@@ -315,11 +316,45 @@ static void serial_omap_start_tx(struct uart_port *port)
 	omap_start_dma(up->uart_dma.tx_dma_channel);
 }
 
+static unsigned int merge_gpio_modemstatus(struct uart_omap_port *up, unsigned int status)
+{
+	int tmp;
+	if (up->ri_gpio) {
+		status &= ~(UART_MSR_TERI | UART_MSR_RI);
+		tmp = !gpio_get_value(up->ri_gpio);
+		if (tmp)
+			status |= UART_MSR_RI;
+		if ((tmp==1) && (up->ri_gpio_old==0))
+			status |= UART_MSR_TERI;
+		up->ri_gpio_old = tmp;
+	}
+	if (up->dsr_gpio) {
+		status &= ~(UART_MSR_DDSR | UART_MSR_DSR);
+		tmp = !gpio_get_value(up->dsr_gpio);
+		if (tmp)
+			status |= UART_MSR_DSR;
+		if (tmp != up->dsr_gpio_old)
+			status |= UART_MSR_DDSR;
+		up->dsr_gpio_old = tmp;
+	}
+	if (up->dcd_gpio) {
+		status &= ~(UART_MSR_DDCD | UART_MSR_DCD);
+		tmp = !gpio_get_value(up->dcd_gpio);
+		if (tmp)
+			status |= UART_MSR_DCD;
+		if (tmp != up->dcd_gpio_old)
+			status |= UART_MSR_DDCD;
+		up->dcd_gpio_old = tmp;
+	}
+	return status;
+}
+
 static unsigned int check_modem_status(struct uart_omap_port *up)
 {
 	unsigned int status;
 
 	status = serial_in(up, UART_MSR);
+	status = merge_gpio_modemstatus(up, status);
 	status |= up->msr_saved_flags;
 	up->msr_saved_flags = 0;
 	if ((status & UART_MSR_ANY_DELTA) == 0)
@@ -343,6 +378,17 @@ static unsigned int check_modem_status(struct uart_omap_port *up)
 	return status;
 }
 
+static irqreturn_t serial_omap_gpio_irq(int irq, void *dev_id)
+{
+	struct uart_omap_port *up = dev_id;
+	unsigned long flags;
+
+	spin_lock_irqsave(&up->port.lock, flags);
+	check_modem_status(up);
+	spin_unlock_irqrestore(&up->port.lock, flags);
+
+	return IRQ_HANDLED;
+}
 /**
  * serial_omap_irq() - This handles the interrupt from one port
  * @irq: uart port irq number
@@ -424,8 +470,16 @@ static void serial_omap_set_mctrl(struct uart_port *port, unsigned int mctrl)
 	dev_dbg(up->port.dev, "serial_omap_set_mctrl+%d\n", up->pdev->id);
 	if (mctrl & TIOCM_RTS)
 		mcr |= UART_MCR_RTS;
-	if (mctrl & TIOCM_DTR)
-		mcr |= UART_MCR_DTR;
+	if (up->dtr_gpio) {
+		if (mctrl & TIOCM_DTR) {
+			gpio_set_value(up->dtr_gpio, 0);
+		} else {
+			gpio_set_value(up->dtr_gpio, 1);
+		}
+	} else {
+		if (mctrl & TIOCM_DTR)
+			mcr |= UART_MCR_DTR;
+	}
 	if (mctrl & TIOCM_OUT1)
 		mcr |= UART_MCR_OUT1;
 	if (mctrl & TIOCM_OUT2)
@@ -465,6 +519,26 @@ static int serial_omap_startup(struct uart_port *port)
 				up->name, up);
 	if (retval)
 		return retval;
+
+	if (up->dcd_gpio) {
+		retval = request_irq( 	gpio_to_irq(up->dcd_gpio),
+					serial_omap_gpio_irq,
+					IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
+					up->name, up);
+
+	}
+	if (up->dsr_gpio) {
+		retval = request_irq( 	gpio_to_irq(up->dsr_gpio),
+					serial_omap_gpio_irq,
+					IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
+					up->name, up);
+	}
+	if (up->ri_gpio) {
+		retval = request_irq( 	gpio_to_irq(up->ri_gpio),
+					serial_omap_gpio_irq,
+					IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
+					up->name, up);
+	}
 
 	dev_dbg(up->port.dev, "serial_omap_startup+%d\n", up->pdev->id);
 
@@ -566,6 +640,13 @@ static void serial_omap_shutdown(struct uart_port *port)
 			up->uart_dma.rx_buf_dma_phys);
 		up->uart_dma.rx_buf = NULL;
 	}
+	if (up->dcd_gpio)
+		free_irq(gpio_to_irq(up->dcd_gpio), up);
+	if (up->dsr_gpio)
+		free_irq(gpio_to_irq(up->dsr_gpio), up);
+	if (up->ri_gpio)
+		free_irq(gpio_to_irq(up->ri_gpio), up);
+
 	free_irq(up->port.irq, up);
 }
 
@@ -891,6 +972,7 @@ static inline void wait_for_xmitr(struct uart_omap_port *up)
 		tmout = 1000000;
 		for (tmout = 1000000; tmout; tmout--) {
 			unsigned int msr = serial_in(up, UART_MSR);
+			msr = merge_gpio_modemstatus(up, msr);
 
 			up->msr_saved_flags |= msr & MSR_SAVE_FLAGS;
 			if (msr & UART_MSR_CTS)
@@ -1280,6 +1362,11 @@ static int serial_omap_probe(struct platform_device *pdev)
 	up->port.uartclk = omap_up_info->uartclk;
 	up->uart_dma.uart_base = mem->start;
 
+	up->dtr_gpio = omap_up_info->dtr_gpio;
+	up->dcd_gpio = omap_up_info->dcd_gpio;
+	up->dsr_gpio = omap_up_info->dsr_gpio;
+	up->ri_gpio  = omap_up_info->ri_gpio;
+
 	if (omap_up_info->dma_enabled) {
 		up->uart_dma.uart_dma_tx = dma_tx->start;
 		up->uart_dma.uart_dma_rx = dma_rx->start;
@@ -1290,6 +1377,23 @@ static int serial_omap_probe(struct platform_device *pdev)
 		spin_lock_init(&(up->uart_dma.rx_lock));
 		up->uart_dma.tx_dma_channel = OMAP_UART_DMA_CH_FREE;
 		up->uart_dma.rx_dma_channel = OMAP_UART_DMA_CH_FREE;
+	}
+
+	if (up->dtr_gpio) {
+		gpio_request( up->dtr_gpio, up->name );
+		gpio_direction_output( up->dtr_gpio, 0);
+	}
+	if (up->dcd_gpio) {
+		gpio_request( up->dcd_gpio, up->name );
+		gpio_direction_input( up->dcd_gpio );
+	}
+	if (up->dsr_gpio) {
+		gpio_request( up->dsr_gpio, up->name );
+		gpio_direction_input( up->dsr_gpio );
+	}
+	if (up->ri_gpio) {
+		gpio_request( up->ri_gpio, up->name );
+		gpio_direction_input( up->ri_gpio );
 	}
 
 	ui[pdev->id] = up;
