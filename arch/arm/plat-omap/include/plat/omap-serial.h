@@ -63,6 +63,11 @@ struct omap_uart_port_info {
 	resource_size_t		mapbase;	/* resource base */
 	unsigned long		irqflags;	/* request_irq flags */
 	upf_t			flags;		/* UPF_* flags */
+
+	unsigned int		dtr_gpio;
+	unsigned int		dcd_gpio;
+	unsigned int		dsr_gpio;
+	unsigned int		ri_gpio;
 };
 
 struct uart_omap_dma {
@@ -111,6 +116,17 @@ struct uart_omap_port {
 	unsigned char		msr_saved_flags;
 	char			name[20];
 	unsigned long		port_activity;
+
+	unsigned int		dtr_gpio;
+	unsigned int		dcd_gpio;
+	unsigned int		dsr_gpio;
+	unsigned int		ri_gpio;
+
+	int		dcd_gpio_old;
+	int		dsr_gpio_old;
+	int		ri_gpio_old;
+
+	spinlock_t		gpio_change_spinlock;
 };
 
 #endif /* __OMAP_SERIAL_H__ */
