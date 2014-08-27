@@ -1547,6 +1547,19 @@ irqreturn_t musb_interrupt(struct musb *musb)
 		retval |= musb_stage0_irq(musb, musb->int_usb,
 				devctl, power);
 
+	/* "stage 1" is handling endpoint irqs */
+
+	if (musb->is_host) {
+		/* During disconnect we see this bit cleared
+		 * which results in a crash
+		*/
+		if (! (devctl & MUSB_DEVCTL_HM)) {
+			dev_dbg( musb->controller, "forcing host mode\n" );
+			devctl |= MUSB_DEVCTL_HM;
+		}
+	}
+
+	/* handle endpoint 0 first */
 	if (musb->int_tx & 1) {
 		if (devctl & MUSB_DEVCTL_HM)
 			retval |= musb_h_ep0_irq(musb);
