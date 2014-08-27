@@ -2896,6 +2896,12 @@ static int nand_flash_detect_onfi(struct mtd_info *mtd, struct nand_chip *chip,
 	if (!mtd->name)
 		mtd->name = p->model;
 
+	// LZ: Don't use ONFI information on Spansion 4GiB and 8GiB
+	if(strcmp(p->model, "S34ML04G1") == 0) {
+		pr_info("Spansion NAND detected: Do not use ONFI data!\n");
+		return 0;
+	}
+
 	mtd->writesize = le32_to_cpu(p->byte_per_page);
 
 	/*
