@@ -699,6 +699,9 @@ static void __init gpmc_mem_init(void)
 	/* this is true for dham35xebox, too */
 	if (machine_is_dham35xebox())
 		boot_rom_space = 0;
+	/* this is true for dham35xlcdtogpios, too */
+	if (machine_is_dham35xgpios())
+		boot_rom_space = 0;
 
 	gpmc_mem_root.start = GPMC_MEM_START + boot_rom_space;
 	gpmc_mem_root.end = GPMC_MEM_END;
