@@ -200,9 +200,15 @@ static int nop_mmc_set_power(struct device *dev, int slot, int power_on,
 static inline void omap_hsmmc_mux(struct omap_mmc_platform_data *mmc_controller,
 			int controller_nr)
 {
-	if (gpio_is_valid(mmc_controller->slots[0].switch_pin))
-		omap_mux_init_gpio(mmc_controller->slots[0].switch_pin,
+	if (gpio_is_valid(mmc_controller->slots[0].switch_pin)) {
+		if (mmc_controller->slots[0].features & HSMMC_CD_HIGH_ACTIVE)
+			omap_mux_init_gpio(mmc_controller->slots[0].switch_pin,
+					OMAP_PIN_INPUT_PULLDOWN);
+		else
+			omap_mux_init_gpio(mmc_controller->slots[0].switch_pin,
 					OMAP_PIN_INPUT_PULLUP);
+	}
+
 	if (gpio_is_valid(mmc_controller->slots[0].gpio_wp))
 		omap_mux_init_gpio(mmc_controller->slots[0].gpio_wp,
 					OMAP_PIN_INPUT_PULLUP);
@@ -280,6 +286,7 @@ static int __init omap_hsmmc_pdata_init(struct omap2_hsmmc_info *c,
 					struct omap_mmc_platform_data *mmc)
 {
 	char *hc_name;
+	u32 reg;
 
 	hc_name = kzalloc(sizeof(char) * (HSMMC_NAME_LEN + 1), GFP_KERNEL);
 	if (!hc_name) {
@@ -307,6 +314,9 @@ static int __init omap_hsmmc_pdata_init(struct omap2_hsmmc_info *c,
 
 	mmc->slots[0].switch_pin = c->gpio_cd;
 	mmc->slots[0].gpio_wp = c->gpio_wp;
+
+	if (c->caps2 & MMC_CAP2_CD_HIGH_ACTIVE)
+		mmc->slots[0].features |= HSMMC_CD_HIGH_ACTIVE;
 
 	mmc->slots[0].remux = c->remux;
 	mmc->slots[0].init_card = c->init_card;
@@ -378,7 +388,12 @@ static int __init omap_hsmmc_pdata_init(struct omap2_hsmmc_info *c,
 			c->caps &= ~MMC_CAP_8_BIT_DATA;
 			c->caps |= MMC_CAP_4_BIT_DATA;
 		}
-		/* FALLTHROUGH */
+
+		reg = omap_ctrl_readl(control_devconf1_offset);
+		reg |= OMAP2_MMCSDIO2ADPCLKISEL;
+		omap_ctrl_writel(reg, control_devconf1_offset);
+
+		// FALLTHROUGH
 	case 3:
 		if (mmc->slots[0].features & HSMMC_HAS_PBIAS) {
 			/* off-chip level shifting, or none */
