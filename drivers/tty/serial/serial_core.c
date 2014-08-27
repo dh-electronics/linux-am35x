@@ -365,7 +365,7 @@ uart_get_baud_rate(struct uart_port *port, struct ktermios *termios,
 		 */
 		if (baud == 0) {
 			hung_up = 1;
-			baud = 9600;
+			baud = 38400;
 		}
 
 		if (baud >= min && baud <= max)
@@ -2133,7 +2133,7 @@ static int uart_poll_init(struct tty_driver *driver, int line, char *options)
 	struct uart_driver *drv = driver->driver_state;
 	struct uart_state *state = drv->state + line;
 	struct uart_port *port;
-	int baud = 9600;
+	int baud = 38400;
 	int bits = 8;
 	int parity = 'n';
 	int flow = 'n';
@@ -2260,8 +2260,8 @@ int uart_register_driver(struct uart_driver *drv)
 	normal->type		= TTY_DRIVER_TYPE_SERIAL;
 	normal->subtype		= SERIAL_TYPE_NORMAL;
 	normal->init_termios	= tty_std_termios;
-	normal->init_termios.c_cflag = B9600 | CS8 | CREAD | HUPCL | CLOCAL;
-	normal->init_termios.c_ispeed = normal->init_termios.c_ospeed = 9600;
+	normal->init_termios.c_cflag = B38400 | CS8 | CREAD | HUPCL | CLOCAL;
+	normal->init_termios.c_ispeed = normal->init_termios.c_ospeed = 38400;
 	normal->flags		= TTY_DRIVER_REAL_RAW | TTY_DRIVER_DYNAMIC_DEV;
 	normal->driver_state    = drv;
 	tty_set_operations(normal, &uart_ops);
