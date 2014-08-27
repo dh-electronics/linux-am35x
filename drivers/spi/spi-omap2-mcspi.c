@@ -916,11 +916,11 @@ static void omap2_mcspi_work(struct work_struct *work)
 			else if (t->rx_buf == NULL)
 				chconf |= OMAP2_MCSPI_CHCONF_TRM_TX_ONLY;
 
-			if (cd && cd->turbo_mode && t->tx_buf == NULL) {
-				/* Turbo mode is for more than one word */
-				if (t->len > ((cs->word_len + 7) >> 3))
-					chconf |= OMAP2_MCSPI_CHCONF_TURBO;
-			}
+			//if (cd && cd->turbo_mode && t->tx_buf == NULL) {
+			//	/* Turbo mode is for more than one word */
+			//	if (t->len > ((cs->word_len + 7) >> 3))
+			//		chconf |= OMAP2_MCSPI_CHCONF_TURBO;
+			//}
 
 			mcspi_write_chconf0(spi, chconf);
 
