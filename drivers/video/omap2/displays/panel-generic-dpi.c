@@ -34,6 +34,7 @@
 #include <linux/delay.h>
 #include <linux/slab.h>
 #include <video/omapdss.h>
+#include <plat/omap_hwmod.h>
 
 #include <video/omap-panel-generic-dpi.h>
 
@@ -58,6 +59,29 @@ struct panel_config {
 
 /* Panel configurations */
 static struct panel_config generic_dpi_panels[] = {
+	/* PrimeView PM070W3T */
+	{
+		{
+			.x_res		= 800,
+			.y_res		= 480,
+
+			.pixel_clock	= 20000,
+
+			.hsw		= 64,
+			.hfp		= 42,
+			.hbp		= 86,
+
+			.vsw		= 5,
+			.vfp		= 10,
+			.vbp		= 33,
+		},
+		.acbi			= 0x0,
+		.acb			= 0x0,
+		.config			=	OMAP_DSS_LCD_TFT | OMAP_DSS_LCD_IPC,
+		.power_on_delay		= 0,
+		.power_off_delay	= 0,
+		.name			= "primeview_pm070wt3",
+	},
 	/* Sharp LQ043T1DG01 */
 	{
 		{
@@ -472,6 +496,111 @@ static int generic_dpi_panel_check_timings(struct omap_dss_device *dssdev,
 	return dpi_check_timings(dssdev, timings);
 }
 
+static int default_recommended_bpp = 16;
+
+int dhcm3517_get_framebuffer_depth(void);
+
+static int generic_dpi_panel_get_recommended_bpp(struct omap_dss_device *dssdev)
+{
+	int ret = dhcm3517_get_framebuffer_depth();
+	if (ret)
+		return ret;
+
+	/* The commandline wasnt set, so we take the value sampled from u-boot */
+	return default_recommended_bpp;
+}
+
+#define DISPC_CONTROL  0x40
+#define DISPC_TIMING_H 0x64
+#define DISPC_TIMING_V 0x68
+#define DISPC_POL_FREQ 0x6C
+#define DISPC_DIVISORo 0x70
+#define DISPC_SIZE_MGR 0x7C
+#define DISPC_GFX_ATTRIBUTES 0xA0
+
+#define XFLD(f,pos,wid) ((f>>pos) & ((1<<wid)-1))
+
+int detect_and_insert_panel(struct omap_hwmod *oh)
+{
+	uint32_t control  = omap_hwmod_read(oh, DISPC_CONTROL);
+	uint32_t timing_h = omap_hwmod_read(oh,	DISPC_TIMING_H);
+	uint32_t timing_v = omap_hwmod_read(oh, DISPC_TIMING_V);
+	uint32_t pol_freq = omap_hwmod_read(oh, DISPC_POL_FREQ);
+	uint32_t divisor  = omap_hwmod_read(oh, DISPC_DIVISORo);
+	uint32_t size_mgr = omap_hwmod_read(oh, DISPC_SIZE_MGR);
+	uint32_t gfx_attr = omap_hwmod_read(oh, DISPC_GFX_ATTRIBUTES);
+
+	uint32_t config = 0;
+	uint32_t lck_div;
+	uint32_t pck_div;
+
+
+	pr_debug( "control  %08x\n", control );
+	pr_debug( "timing_v %08x\n", timing_v );
+	pr_debug( "timing_h %08x\n", timing_h );
+	pr_debug( "pol_freq %08x\n", pol_freq );
+	pr_debug( "divisor  %08x\n", divisor );
+	pr_debug( "size_mgr %08x\n", size_mgr );
+	pr_debug( "gfx_attr %08x\n", gfx_attr );
+
+	switch (XFLD(gfx_attr, 1, 4)) {
+		case 0x8:
+		case 0x9:
+			default_recommended_bpp = 24;
+			break;
+		case 0x6:
+			default_recommended_bpp = 16;
+			break;
+		default:
+			pr_debug( "unknown video mode, defaulting to 16bpp\n" );
+			default_recommended_bpp = 16;
+	}
+
+
+	generic_dpi_panels[0].timings.x_res = XFLD(size_mgr,  0, 11) + 1;
+	generic_dpi_panels[0].timings.y_res = XFLD(size_mgr, 16, 11) + 1;
+
+	generic_dpi_panels[0].timings.hsw   = XFLD(timing_h,  0,  8) + 1;
+	generic_dpi_panels[0].timings.hfp   = XFLD(timing_h,  8, 12) + 1;
+	generic_dpi_panels[0].timings.hbp   = XFLD(timing_h,  20, 8) + 1;
+
+	generic_dpi_panels[0].timings.vsw   = XFLD(timing_v,  0,  8) + 1;
+	generic_dpi_panels[0].timings.vfp   = XFLD(timing_v,  8, 12) + 1;
+	generic_dpi_panels[0].timings.vbp   = XFLD(timing_v,  20, 8) + 1;
+
+	pr_debug( "res: %d, %d\n", generic_dpi_panels[0].timings.x_res, generic_dpi_panels[0].timings.y_res );
+
+	pr_debug( "h: %d, %d, %d\n", generic_dpi_panels[0].timings.hsw, generic_dpi_panels[0].timings.hfp, generic_dpi_panels[0].timings.hbp );
+	pr_debug( "v: %d, %d, %d\n", generic_dpi_panels[0].timings.vsw, generic_dpi_panels[0].timings.vfp, generic_dpi_panels[0].timings.vbp );
+
+	config |= XFLD(pol_freq, 16, 1) ? OMAP_DSS_LCD_RF : 0;
+	config |= XFLD(pol_freq, 15, 1) ? OMAP_DSS_LCD_IEO : 0;
+	config |= XFLD(pol_freq, 14, 1) ? OMAP_DSS_LCD_IPC : 0;
+	config |= XFLD(pol_freq, 13, 1) ? OMAP_DSS_LCD_IHS : 0;
+	config |= XFLD(pol_freq, 12, 1) ? OMAP_DSS_LCD_IVS : 0;
+
+	generic_dpi_panels[0].config = config | OMAP_DSS_LCD_TFT;
+
+	generic_dpi_panels[0].acb = XFLD(pol_freq, 0, 8);
+	generic_dpi_panels[0].acbi = XFLD(pol_freq, 8, 4);
+
+	/* Calculate Pixel Clock
+	 * assuming, that u-boot uses 843600kHz as the base clock
+	 */
+
+	lck_div = XFLD(divisor, 16, 8);
+	pck_div = XFLD(divisor,  0, 8);
+
+	pr_debug( "clocking: l_div %d , p_div %d\n", lck_div, pck_div );
+
+	generic_dpi_panels[0].timings.pixel_clock = 843600/5 / lck_div / pck_div;
+
+	pr_debug( "clocking: result %d\n", 843600/5 / lck_div / pck_div  );
+
+	return 0;
+}
+
+
 static struct omap_dss_driver dpi_driver = {
 	.probe		= generic_dpi_panel_probe,
 	.remove		= __exit_p(generic_dpi_panel_remove),
@@ -484,6 +613,8 @@ static struct omap_dss_driver dpi_driver = {
 	.set_timings	= generic_dpi_panel_set_timings,
 	.get_timings	= generic_dpi_panel_get_timings,
 	.check_timings	= generic_dpi_panel_check_timings,
+
+	.get_recommended_bpp = generic_dpi_panel_get_recommended_bpp,
 
 	.driver         = {
 		.name   = "generic_dpi_panel",
