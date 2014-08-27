@@ -48,7 +48,15 @@ void __iomem *cm2_base;
 
 u32 omap_prcm_get_reset_sources(void)
 {
-	/* XXX This presumably needs modification for 34XX */
+	/* XXX This can only be done once.
+	 *     Because we need to reset the bits afterwards.
+	 *     We make sure, that the watchdog saves this value.
+	 */
+	if (cpu_is_omap3517()) {
+		u32 ret = omap2_prm_read_mod_reg(OMAP3430_GR_MOD, OMAP2_RM_RSTST) & 0x67f;
+		omap2_prm_write_mod_reg(ret, OMAP3430_GR_MOD, OMAP2_RM_RSTST);
+		return ret;
+	}
 	if (cpu_is_omap24xx() || cpu_is_omap34xx())
 		return omap2_prm_read_mod_reg(WKUP_MOD, OMAP2_RM_RSTST) & 0x7f;
 	if (cpu_is_omap44xx())
