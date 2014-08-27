@@ -2341,8 +2341,8 @@ static void _dispc_mgr_set_lcd_timings(enum omap_channel channel, int hsw,
 		timing_h = FLD_VAL(hsw-1, 7, 0) | FLD_VAL(hfp-1, 19, 8) |
 			FLD_VAL(hbp-1, 31, 20);
 
-		timing_v = FLD_VAL(vsw-1, 7, 0) | FLD_VAL(vfp, 19, 8) |
-			FLD_VAL(vbp, 31, 20);
+		timing_v = FLD_VAL(vsw-1, 7, 0) | FLD_VAL(vfp-1, 19, 8) |
+			FLD_VAL(vbp-1, 31, 20);
 	}
 
 	dispc_write_reg(DISPC_TIMING_H(channel), timing_h);

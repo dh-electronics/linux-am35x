@@ -1610,7 +1610,8 @@ int dsi_pll_init(struct platform_device *dsidev, bool enable_hsclk,
 
 	DSSDBG("PLL init\n");
 
-	if (dsi->vdds_dsi_reg == NULL) {
+	if ((dsi->vdds_dsi_reg == NULL) &&
+			!cpu_is_omap3517() && !cpu_is_omap3505()) {
 		struct regulator *vdds_dsi;
 
 		vdds_dsi = regulator_get(&dsi->pdev->dev, "vdds_dsi");
@@ -1629,7 +1630,8 @@ int dsi_pll_init(struct platform_device *dsidev, bool enable_hsclk,
 	 */
 	dsi_enable_scp_clk(dsidev);
 
-	if (!dsi->vdds_dsi_enabled) {
+	if (!dsi->vdds_dsi_enabled &&
+			!cpu_is_omap3517() && !cpu_is_omap3505()) {
 		r = regulator_enable(dsi->vdds_dsi_reg);
 		if (r)
 			goto err0;
@@ -1668,7 +1670,8 @@ int dsi_pll_init(struct platform_device *dsidev, bool enable_hsclk,
 
 	return 0;
 err1:
-	if (dsi->vdds_dsi_enabled) {
+	if (dsi->vdds_dsi_enabled &&
+			!cpu_is_omap3517() && !cpu_is_omap3505()) {
 		regulator_disable(dsi->vdds_dsi_reg);
 		dsi->vdds_dsi_enabled = false;
 	}
@@ -1684,7 +1687,8 @@ void dsi_pll_uninit(struct platform_device *dsidev, bool disconnect_lanes)
 
 	dsi->pll_locked = 0;
 	dsi_pll_power(dsidev, DSI_PLL_POWER_OFF);
-	if (disconnect_lanes) {
+	if (disconnect_lanes &&
+			!cpu_is_omap3517() && !cpu_is_omap3505()) {
 		WARN_ON(!dsi->vdds_dsi_enabled);
 		regulator_disable(dsi->vdds_dsi_reg);
 		dsi->vdds_dsi_enabled = false;
@@ -4530,7 +4534,8 @@ int dsi_init_display(struct omap_dss_device *dssdev)
 			OMAP_DSS_DISPLAY_CAP_TEAR_ELIM;
 	}
 
-	if (dsi->vdds_dsi_reg == NULL) {
+	if ((dsi->vdds_dsi_reg == NULL) &&
+			!cpu_is_omap3517() && !cpu_is_omap3505()) {
 		struct regulator *vdds_dsi;
 
 		vdds_dsi = regulator_get(&dsi->pdev->dev, "vdds_dsi");
@@ -4799,7 +4804,8 @@ static int omap_dsihw_remove(struct platform_device *dsidev)
 
 	dsi_put_clocks(dsidev);
 
-	if (dsi->vdds_dsi_reg != NULL) {
+	if ((dsi->vdds_dsi_reg != NULL) &&
+			!cpu_is_omap3517() && !cpu_is_omap3505()) {
 		if (dsi->vdds_dsi_enabled) {
 			regulator_disable(dsi->vdds_dsi_reg);
 			dsi->vdds_dsi_enabled = false;

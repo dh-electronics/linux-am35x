@@ -200,6 +200,16 @@ int __init omap_display_init(struct omap_dss_board_info *board_data)
 	return r;
 }
 
+extern int detect_and_insert_panel(struct omap_hwmod *oh);
+
+
+int omap_dispc_reset(struct omap_hwmod *oh)
+{
+	detect_and_insert_panel(oh);
+
+	return 0;
+}
+
 static void dispc_disable_outputs(void)
 {
 	u32 v, irq_mask = 0;
