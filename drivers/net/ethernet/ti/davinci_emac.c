@@ -346,6 +346,7 @@ struct emac_priv {
 
 /* clock frequency for EMAC */
 static struct clk *emac_clk;
+static struct clk *phy_clk;
 static unsigned long emac_bus_frequency;
 
 /* EMAC TX Host Error description strings */
@@ -1754,6 +1755,34 @@ static const struct net_device_ops emac_netdev_ops = {
 };
 
 /**
+ * davinci_get_mac: read mac addr from hardware
+ * @ndev: network device
+ * @addr: output mac addr
+ *
+ * Reads the mac addr out of the hardware.
+ * We assume, that its properly initilised by u-boot already,
+ * which is true for dh boards.
+ */
+static void davinci_get_mac(struct net_device *ndev, u8 *addr)
+{
+	uint32_t hival;
+	uint32_t loval;
+
+	struct emac_priv *priv = netdev_priv(ndev);
+
+	hival = emac_read(EMAC_MACADDRHI);
+	loval = emac_read(EMAC_MACADDRLO);
+
+	addr[5] = (u8) ((loval >> 8) & 0xff);
+	addr[4] = (u8) ((loval >> 0) & 0xff);
+
+	addr[3] = (u8) ((hival >> 24) & 0xff);
+	addr[2] = (u8) ((hival >> 16) & 0xff);
+	addr[1] = (u8) ((hival >>  8) & 0xff);
+	addr[0] = (u8) ((hival >>  0) & 0xff);
+}
+
+/**
  * davinci_emac_probe: EMAC device probe
  * @pdev: The DaVinci EMAC device that we are removing
  *
@@ -1773,19 +1802,25 @@ static int __devinit davinci_emac_probe(struct platform_device *pdev)
 	struct cpdma_params dma_params;
 
 	/* obtain emac clock from kernel */
-	emac_clk = clk_get(&pdev->dev, NULL);
+	emac_clk = clk_get(&pdev->dev, "emac_clk");
 	if (IS_ERR(emac_clk)) {
 		dev_err(&pdev->dev, "failed to get EMAC clock\n");
 		return -EBUSY;
 	}
 	emac_bus_frequency = clk_get_rate(emac_clk);
 	/* TODO: Probe PHY here if possible */
+	phy_clk = clk_get(&pdev->dev, "phy_clk");
+	if (IS_ERR(phy_clk)) {
+		dev_err(&pdev->dev, "failed to get PHY clock\n");
+		rc = -EBUSY;
+		goto free_clk;
+	}
 
 	ndev = alloc_etherdev(sizeof(struct emac_priv));
 	if (!ndev) {
 		dev_err(&pdev->dev, "error allocating net_device\n");
 		rc = -ENOMEM;
-		goto free_clk;
+		goto free_phy_clk;
 	}
 
 	platform_set_drvdata(pdev, ndev);
@@ -1889,18 +1924,23 @@ static int __devinit davinci_emac_probe(struct platform_device *pdev)
 	}
 	ndev->irq = res->start;
 
-	if (!is_valid_ether_addr(priv->mac_addr)) {
-		/* Use random MAC if none passed */
-		random_ether_addr(priv->mac_addr);
-		dev_warn(&pdev->dev, "using random MAC addr: %pM\n",
-							priv->mac_addr);
-	}
+
 
 	ndev->netdev_ops = &emac_netdev_ops;
 	SET_ETHTOOL_OPS(ndev, &ethtool_ops);
 	netif_napi_add(ndev, &priv->napi, emac_poll, EMAC_POLL_WEIGHT);
 
 	clk_enable(emac_clk);
+	clk_enable(phy_clk);
+
+	davinci_get_mac(ndev, priv->mac_addr);
+
+	if (!is_valid_ether_addr(priv->mac_addr)) {
+		/* Use random MAC if none passed */
+		random_ether_addr(priv->mac_addr);
+		dev_warn(&pdev->dev, "using random MAC addr: %pM\n",
+							priv->mac_addr);
+	}
 
 	/* register the network device */
 	SET_NETDEV_DEV(ndev, &pdev->dev);
@@ -1934,6 +1974,8 @@ no_dma:
 
 probe_quit:
 	free_netdev(ndev);
+free_phy_clk:
+	clk_put(phy_clk);
 free_clk:
 	clk_put(emac_clk);
 	return rc;
@@ -1970,7 +2012,9 @@ static int __devexit davinci_emac_remove(struct platform_device *pdev)
 	free_netdev(ndev);
 
 	clk_disable(emac_clk);
+	clk_disable(phy_clk);
 	clk_put(emac_clk);
+	clk_put(phy_clk);
 
 	return 0;
 }
@@ -1984,6 +2028,7 @@ static int davinci_emac_suspend(struct device *dev)
 		emac_dev_stop(ndev);
 
 	clk_disable(emac_clk);
+	clk_disable(phy_clk);
 
 	return 0;
 }
@@ -1994,6 +2039,7 @@ static int davinci_emac_resume(struct device *dev)
 	struct net_device *ndev = platform_get_drvdata(pdev);
 
 	clk_enable(emac_clk);
+	clk_enable(phy_clk);
 
 	if (netif_running(ndev))
 		emac_dev_open(ndev);

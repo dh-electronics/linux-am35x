@@ -315,7 +315,7 @@ static int __devinit davinci_mdio_probe(struct platform_device *pdev)
 	data->bus->priv		= data;
 	snprintf(data->bus->id, MII_BUS_ID_SIZE, "%x", pdev->id);
 
-	data->clk = clk_get(dev, NULL);
+	data->clk = clk_get(dev, "rmii_ck");
 	if (IS_ERR(data->clk)) {
 		data->clk = NULL;
 		dev_err(dev, "failed to get device clock\n");
