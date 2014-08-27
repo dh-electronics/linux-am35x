@@ -1014,7 +1014,8 @@ static void __exit m25p80_exit(void)
 }
 
 
-module_init(m25p80_init);
+/* module_init(m25p80_init); */
+late_initcall(m25p80_init);
 module_exit(m25p80_exit);
 
 MODULE_LICENSE("GPL");
