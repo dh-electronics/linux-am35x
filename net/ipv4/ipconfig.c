@@ -257,15 +257,21 @@ static int __init ic_open_devs(void)
 	if (!ic_first_dev)
 		goto have_carrier;
 
+	rtnl_unlock();
+
 	/* wait for a carrier on at least one device */
 	start = jiffies;
 	while (jiffies - start < msecs_to_jiffies(CONF_CARRIER_TIMEOUT)) {
+		rtnl_lock();
 		for_each_netdev(&init_net, dev)
 			if (ic_is_init_dev(dev) && netif_carrier_ok(dev))
 				goto have_carrier;
+		rtnl_unlock();
 
 		msleep(1);
 	}
+
+	rtnl_lock();
 have_carrier:
 	rtnl_unlock();
 
