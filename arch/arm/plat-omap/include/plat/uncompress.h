@@ -181,6 +181,7 @@ static inline void __arch_decomp_setup(unsigned long arch_id)
 
 		/* DHCM3517 and DHAM35XMEDEACC using UART1 */
 		DEBUG_LL_OMAP3(1, dhcm3517);
+		DEBUG_LL_OMAP3(1, dham35xmedeacc);
 
 	} while (0);
 }
