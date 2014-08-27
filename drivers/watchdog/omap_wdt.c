@@ -46,6 +46,16 @@
 #include <mach/hardware.h>
 #include <plat/prcm.h>
 
+#define OMAP_WDT_STATUS_OPEN	0 /* not used LZ*/
+#define OMAP_WDT_STATUS_STARTED	1 /* not used LZ*/
+#define OMAP_WDT_EXPECT_CLOSE	2
+
+#ifdef CONFIG_WATCHDOG_NOWAYOUT
+static int nowayout = 1;
+#else
+static int nowayout = 0;
+#endif
+
 #include "omap_wdt.h"
 
 static struct platform_device *omap_wdt_dev;
@@ -63,6 +73,8 @@ struct omap_wdt_dev {
 	int             omap_wdt_users;
 	struct resource *mem;
 	struct miscdevice omap_wdt_miscdev;
+	unsigned int reset_sources;
+	unsigned long status;		/* added by LZ to support magic close */
 };
 
 static void omap_wdt_ping(struct omap_wdt_dev *wdev)
@@ -176,17 +188,27 @@ static int omap_wdt_release(struct inode *inode, struct file *file)
 	/*
 	 *      Shut off the timer unless NOWAYOUT is defined.
 	 */
-#ifndef CONFIG_WATCHDOG_NOWAYOUT
-	pm_runtime_get_sync(wdev->dev);
 
-	omap_wdt_disable(wdev);
+	if (test_bit(OMAP_WDT_EXPECT_CLOSE, &(wdev->status)) && !nowayout) {
 
-	pm_runtime_put_sync(wdev->dev);
-#else
-	printk(KERN_CRIT "omap_wdt: Unexpected close, not stopping!\n");
-#endif
+		pm_runtime_get_sync(wdev->dev);
+
+		omap_wdt_disable(wdev);
+
+		pm_runtime_put_sync(wdev->dev);
+	} else {
+		printk(KERN_CRIT "omap_wdt: Unexpected close, not stopping!\n");
+
+		pm_runtime_get_sync(wdev->dev);
+		spin_lock(&wdt_lock);
+		omap_wdt_ping(wdev);
+		spin_unlock(&wdt_lock);
+		pm_runtime_put_sync(wdev->dev);
+
+	}
+
 	wdev->omap_wdt_users = 0;
-
+	clear_bit(OMAP_WDT_EXPECT_CLOSE, &(wdev->status));
 	return 0;
 }
 
@@ -194,6 +216,8 @@ static ssize_t omap_wdt_write(struct file *file, const char __user *data,
 		size_t len, loff_t *ppos)
 {
 	struct omap_wdt_dev *wdev = file->private_data;
+	size_t i;
+	char c;
 
 	/* Refresh LOAD_TIME. */
 	if (len) {
@@ -202,6 +226,16 @@ static ssize_t omap_wdt_write(struct file *file, const char __user *data,
 		omap_wdt_ping(wdev);
 		spin_unlock(&wdt_lock);
 		pm_runtime_put_sync(wdev->dev);
+
+		clear_bit(OMAP_WDT_EXPECT_CLOSE, &(wdev->status));
+
+		/* scan to see whether or not we got the magic character */
+		for (i = 0; i != len; i++) {
+			if (get_user(c, data + i))
+				return -EFAULT;
+			if (c == 'V')
+				set_bit(OMAP_WDT_EXPECT_CLOSE, &(wdev->status));
+		}
 	}
 	return len;
 }
@@ -213,7 +247,7 @@ static long omap_wdt_ioctl(struct file *file, unsigned int cmd,
 	int new_margin;
 	static const struct watchdog_info ident = {
 		.identity = "OMAP Watchdog",
-		.options = WDIOF_SETTIMEOUT,
+		.options = WDIOF_KEEPALIVEPING | WDIOF_SETTIMEOUT | WDIOF_MAGICCLOSE,
 		.firmware_version = 0,
 	};
 
@@ -226,6 +260,9 @@ static long omap_wdt_ioctl(struct file *file, unsigned int cmd,
 	case WDIOC_GETSTATUS:
 		return put_user(0, (int __user *)arg);
 	case WDIOC_GETBOOTSTATUS:
+		if (cpu_is_omap3517())
+			return put_user((wdev->reset_sources & 0x10) ? WDIOF_CARDRESET : 0,
+					(int __user *)arg);
 		if (cpu_is_omap16xx())
 			return put_user(__raw_readw(ARM_SYSST),
 					(int __user *)arg);
@@ -310,6 +347,9 @@ static int __devinit omap_wdt_probe(struct platform_device *pdev)
 		goto err_ioremap;
 	}
 
+	if (cpu_is_omap3517())
+		wdev->reset_sources = omap_prcm_get_reset_sources();
+
 	platform_set_drvdata(pdev, wdev);
 
 	pm_runtime_enable(wdev->dev);
@@ -327,9 +367,9 @@ static int __devinit omap_wdt_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_misc;
 
-	pr_info("OMAP Watchdog Timer Rev 0x%02x: initial timeout %d sec\n",
+	pr_info("OMAP Watchdog Timer Rev 0x%02x: initial timeout %d sec (nowayout=%d)\n",
 		__raw_readl(wdev->base + OMAP_WATCHDOG_REV) & 0xFF,
-		timer_margin);
+		timer_margin, nowayout);
 
 	pm_runtime_put_sync(wdev->dev);
 
