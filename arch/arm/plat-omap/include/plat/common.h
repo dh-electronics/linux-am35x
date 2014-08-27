@@ -57,6 +57,7 @@ void ti816x_init_early(void);
 void omap4430_init_early(void);
 
 extern int omap_dss_reset(struct omap_hwmod *);
+extern int omap_dispc_reset(struct omap_hwmod *);
 
 void omap_sram_init(void);
 

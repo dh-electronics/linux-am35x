@@ -74,6 +74,7 @@ static struct omap_hwmod_class_sysconfig omap2_dispc_sysc = {
 struct omap_hwmod_class omap2_dispc_hwmod_class = {
 	.name	= "dispc",
 	.sysc	= &omap2_dispc_sysc,
+	.reset	= omap_dispc_reset,
 };
 
 /*
