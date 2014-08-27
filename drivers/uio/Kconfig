@@ -24,6 +24,41 @@ config UIO_CIF
 	  To compile this driver as a module, choose M here: the module
 	  will be called uio_cif.
 
+config UIO_CFI2
+	tristate "Userspace I/O driver to support FPGA general"
+	help
+	  Driver for CFI2 FPGA designed by DH-electronics.
+
+	  To compile this driver as a module, choose M here: the module
+	  will be called uio_cfi2.
+
+config UIO_CFI2_UART0
+	tristate "Userspace I/O driver to support CFI2 UART0"
+	help
+	  Driver for CFI2 FPGA designed by DH-electronics.
+
+	  To compile this driver as a module, choose M here: the module
+	  will be called uio_cfi2.
+	select UIO_CFI2
+
+config UIO_CFI2_UART1
+	tristate "Userspace I/O driver to support CFI2 UART1"
+	help
+	  Driver for CFI2 FPGA designed by DH-electronics.
+
+	  To compile this driver as a module, choose M here: the module
+	  will be called uio_cfi2.
+	select UIO_CFI2
+
+config UIO_CFI2_UART2
+	tristate "Userspace I/O driver to support CFI2 UART2"
+	help
+	  Driver for CFI2 FPGA designed by DH-electronics.
+
+	  To compile this driver as a module, choose M here: the module
+	  will be called uio_cfi2.
+	select UIO_CFI2
+
 config UIO_PDRV
 	tristate "Userspace I/O platform driver"
 	help
