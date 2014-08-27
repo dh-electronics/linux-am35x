@@ -184,6 +184,7 @@ static inline void __arch_decomp_setup(unsigned long arch_id)
 		DEBUG_LL_OMAP3(1, dham35xmedeacc);
 		DEBUG_LL_OMAP3(1, dham35xcfi2);
 		DEBUG_LL_OMAP3(1, dham35xebox);
+		DEBUG_LL_OMAP3(1, dham35xgpios);
 
 	} while (0);
 }
