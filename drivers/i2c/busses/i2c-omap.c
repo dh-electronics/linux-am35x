@@ -937,7 +937,7 @@ complete:
 					break;
 				}
 
-				if ((dev->errata & I2C_OMAP3_1P153) &&
+				if (/*(dev->errata & I2C_OMAP3_1P153) &&*/
 				    errata_omap3_1p153(dev, &stat, &err))
 					goto complete;
 
