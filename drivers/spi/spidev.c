@@ -601,9 +601,18 @@ static int __devinit spidev_probe(struct spi_device *spi)
 		struct device *dev;
 
 		spidev->devt = MKDEV(SPIDEV_MAJOR, minor);
+	if (spi->chip_select == 1)
+	{
+		dev = device_create(spidev_class, &spi->dev, spidev->devt,
+				    spidev, "spidev%d.%d",
+				    spi->master->bus_num, 0);
+	}
+	else
+	{
 		dev = device_create(spidev_class, &spi->dev, spidev->devt,
 				    spidev, "spidev%d.%d",
 				    spi->master->bus_num, spi->chip_select);
+	}
 		status = IS_ERR(dev) ? PTR_ERR(dev) : 0;
 	} else {
 		dev_dbg(&spi->dev, "no minor number available!\n");
