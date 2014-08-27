@@ -205,7 +205,9 @@ extern int detect_and_insert_panel(struct omap_hwmod *oh);
 
 int omap_dispc_reset(struct omap_hwmod *oh)
 {
+#ifdef CONFIG_PANEL_GENERIC_DPI
 	detect_and_insert_panel(oh);
+#endif
 
 	return 0;
 }
