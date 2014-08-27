@@ -19,6 +19,7 @@
 #include <plat/nand.h>
 #include <plat/board.h>
 #include <plat/gpmc.h>
+#include <asm/mach-types.h>
 
 static struct resource gpmc_nand_resource = {
 	.flags		= IORESOURCE_MEM,
@@ -105,6 +106,16 @@ int __init gpmc_nand_init(struct omap_nand_platform_data *gpmc_nand_data)
 	/* Enable RD PIN Monitoring Reg */
 	if (gpmc_nand_data->dev_ready) {
 		gpmc_cs_configure(gpmc_nand_data->cs, GPMC_CONFIG_RDY_BSY, 1);
+	}
+
+	if (machine_is_dhcm3517()) {
+		gpmc_nand_resource.start = 0x10000000;
+		gpmc_nand_resource.end = 0x10000000 + 0x8000000;
+	}
+
+	if (machine_is_dham35xmedeacc()) {
+		gpmc_nand_resource.start = 0x10000000;
+		gpmc_nand_resource.end = 0x10000000 + 0x8000000;
 	}
 
 	err = platform_device_register(&gpmc_nand_device);

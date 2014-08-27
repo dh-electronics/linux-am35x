@@ -217,6 +217,7 @@ static int read_bbt(struct mtd_info *mtd, uint8_t *buf, int page, int num,
 			}
 		}
 
+		pr_info("nand_read_bbt: reading the data in len=%d msk=%08x\n", len, msk);
 		/* Analyse data */
 		for (i = 0; i < len; i++) {
 			uint8_t dat = buf[i];
