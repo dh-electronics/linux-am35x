@@ -616,6 +616,7 @@ static int __devinit ds1307_probe(struct i2c_client *client,
 	struct ds1307		*ds1307;
 	int			err = -ENODEV;
 	int			tmp;
+	int		result;
 	const struct chip_desc	*chip = &chips[id->driver_data];
 	struct i2c_adapter	*adapter = to_i2c_adapter(client->dev.parent);
 	int			want_irq = false;
@@ -822,9 +823,27 @@ read_rtc:
 	case mcp7941x:
 		/* make sure that the backup battery is enabled */
 		if (!(ds1307->regs[DS1307_REG_WDAY] & MCP7941X_BIT_VBATEN)) {
-			i2c_smbus_write_byte_data(client, DS1307_REG_WDAY,
-					ds1307->regs[DS1307_REG_WDAY]
-					| MCP7941X_BIT_VBATEN);
+
+		// LZ: setting complete default date instead of just enabling VBATEN
+		//	i2c_smbus_write_byte_data(client, DS1307_REG_WDAY,
+		//			ds1307->regs[DS1307_REG_WDAY]
+		//			| MCP7941X_BIT_VBATEN);
+
+		/* setup default date if battery was disabled */
+		buf[DS1307_REG_SECS] = 0x00 | MCP7941X_BIT_ST;
+		buf[DS1307_REG_MIN] = 0x00;
+		buf[DS1307_REG_HOUR] = 0x00;
+		buf[DS1307_REG_WDAY] = 0x01 | MCP7941X_BIT_VBATEN;
+		buf[DS1307_REG_MDAY] = 0x01;
+		buf[DS1307_REG_MONTH] = 0x01;
+		buf[DS1307_REG_YEAR] = 0x01;
+
+		result = ds1307->write_block_data(ds1307->client, ds1307->offset, 7, buf);
+		if (result < 0) {
+			dev_err(&client->dev, "%s error %d\n", "set default date", result);
+			return result;
+		}
+
 		}
 
 		/* clock halted?  turn it on, so clock can tick. */
