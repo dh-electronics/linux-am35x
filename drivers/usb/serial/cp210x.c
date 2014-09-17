@@ -96,8 +96,7 @@ static int cp210x_open(struct tty_struct *tty, struct usb_serial_port *);
 static void cp210x_close(struct usb_serial_port *);
 static int cp210x_ioctl(struct tty_struct *tty,
 	unsigned int cmd, unsigned long arg);
-static void cp210x_get_termios(struct tty_struct *,
-	struct usb_serial_port *port);
+static void cp210x_get_termios(struct tty_struct *, struct usb_serial_port *port);
 static void cp210x_get_termios_port(struct usb_serial_port *port,
 	unsigned int *cflagp, unsigned int *baudp);
 static void cp210x_change_speed(struct tty_struct *, struct usb_serial_port *,
@@ -711,10 +710,10 @@ static int cp210x_ioctl(struct tty_struct *tty,
 		break;
 
 	default:
-		return -ENOTSUPP;
+	        break;
 	}
 
-	return 0;
+	return -ENOIOCTLCMD;
 }
 
 /*
